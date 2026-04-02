@@ -22,18 +22,29 @@ type Config struct {
 	Timeout    time.Duration
 	Resume     bool
 	Verbose    bool
+
+	ChunkStrategy  string
+	MaxTokens      int
+	Embedder       string
+	EmbeddingModel string
+	EmbeddingBatch int
 }
 
 // NewConfig returns a Config with sensible defaults for the given seed URL.
 func NewConfig(seedURL string) Config {
 	return Config{
-		SeedURL:   seedURL,
-		OutputDir: "./docs-output",
-		RateLimit: 0,
-		Workers:   10,
-		MaxDepth:  0,
-		UserAgent: "docs-crawler/0.1.0",
-		Timeout:   30 * time.Second,
+		SeedURL:        seedURL,
+		OutputDir:      "./docs-output",
+		RateLimit:      0,
+		Workers:        10,
+		MaxDepth:       0,
+		UserAgent:      "docs-crawler/0.1.0",
+		Timeout:        30 * time.Second,
+		ChunkStrategy:  "heading",
+		MaxTokens:      512,
+		Embedder:       "auto",
+		EmbeddingModel: "nomic-embed-text",
+		EmbeddingBatch: 64,
 	}
 }
 
@@ -61,6 +72,15 @@ func (c Config) Validate() error {
 
 	if c.OutputDir == "" {
 		errs = append(errs, fmt.Errorf("output directory must not be empty"))
+	}
+
+	if c.MaxTokens <= 0 {
+		errs = append(errs, fmt.Errorf("max tokens must be greater than 0, got %d", c.MaxTokens))
+	}
+
+	validEmbedders := map[string]bool{"auto": true, "ollama": true, "openai": true, "cohere": true, "tfidf": true}
+	if !validEmbedders[c.Embedder] {
+		errs = append(errs, fmt.Errorf("embedder must be one of auto/ollama/openai/cohere/tfidf, got %q", c.Embedder))
 	}
 
 	return errors.Join(errs...)
@@ -141,3 +161,18 @@ func (c Config) WithVerbose(verbose bool) Config {
 	c.Verbose = verbose
 	return c
 }
+
+// WithChunkStrategy returns a new Config with the given chunk strategy.
+func (c Config) WithChunkStrategy(s string) Config { c.ChunkStrategy = s; return c }
+
+// WithMaxTokens returns a new Config with the given max tokens value.
+func (c Config) WithMaxTokens(n int) Config { c.MaxTokens = n; return c }
+
+// WithEmbedder returns a new Config with the given embedder.
+func (c Config) WithEmbedder(e string) Config { c.Embedder = e; return c }
+
+// WithEmbeddingModel returns a new Config with the given embedding model.
+func (c Config) WithEmbeddingModel(m string) Config { c.EmbeddingModel = m; return c }
+
+// WithEmbeddingBatch returns a new Config with the given embedding batch size.
+func (c Config) WithEmbeddingBatch(n int) Config { c.EmbeddingBatch = n; return c }

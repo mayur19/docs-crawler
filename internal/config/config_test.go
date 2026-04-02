@@ -23,6 +23,11 @@ func TestNewConfig_Defaults(t *testing.T) {
 	assert.False(t, cfg.Verbose)
 	assert.Nil(t, cfg.Includes)
 	assert.Nil(t, cfg.Excludes)
+	assert.Equal(t, "heading", cfg.ChunkStrategy)
+	assert.Equal(t, 512, cfg.MaxTokens)
+	assert.Equal(t, "auto", cfg.Embedder)
+	assert.Equal(t, "nomic-embed-text", cfg.EmbeddingModel)
+	assert.Equal(t, 64, cfg.EmbeddingBatch)
 }
 
 func TestConfig_Validate(t *testing.T) {
@@ -105,6 +110,49 @@ func TestConfig_Validate(t *testing.T) {
 				Timeout:   -1,
 			},
 			wantErr: true,
+		},
+		{
+			name:    "zero max tokens",
+			config:  NewConfig("https://example.com").WithMaxTokens(0),
+			wantErr: true,
+			errMsg:  "max tokens must be greater than 0",
+		},
+		{
+			name:    "negative max tokens",
+			config:  NewConfig("https://example.com").WithMaxTokens(-10),
+			wantErr: true,
+			errMsg:  "max tokens must be greater than 0",
+		},
+		{
+			name:    "valid max tokens",
+			config:  NewConfig("https://example.com").WithMaxTokens(1024),
+			wantErr: false,
+		},
+		{
+			name:    "invalid embedder",
+			config:  NewConfig("https://example.com").WithEmbedder("unknown"),
+			wantErr: true,
+			errMsg:  "embedder must be one of auto/ollama/openai/cohere/tfidf",
+		},
+		{
+			name:    "valid embedder ollama",
+			config:  NewConfig("https://example.com").WithEmbedder("ollama"),
+			wantErr: false,
+		},
+		{
+			name:    "valid embedder openai",
+			config:  NewConfig("https://example.com").WithEmbedder("openai"),
+			wantErr: false,
+		},
+		{
+			name:    "valid embedder cohere",
+			config:  NewConfig("https://example.com").WithEmbedder("cohere"),
+			wantErr: false,
+		},
+		{
+			name:    "valid embedder tfidf",
+			config:  NewConfig("https://example.com").WithEmbedder("tfidf"),
+			wantErr: false,
 		},
 	}
 
@@ -191,6 +239,36 @@ func TestConfig_WithMethods_Immutability(t *testing.T) {
 			mutate:   func(c Config) Config { return c.WithVerbose(true) },
 			checkOld: func(t *testing.T, c Config) { assert.False(t, c.Verbose) },
 			checkNew: func(t *testing.T, c Config) { assert.True(t, c.Verbose) },
+		},
+		{
+			name:     "WithChunkStrategy does not mutate original",
+			mutate:   func(c Config) Config { return c.WithChunkStrategy("paragraph") },
+			checkOld: func(t *testing.T, c Config) { assert.Equal(t, "heading", c.ChunkStrategy) },
+			checkNew: func(t *testing.T, c Config) { assert.Equal(t, "paragraph", c.ChunkStrategy) },
+		},
+		{
+			name:     "WithMaxTokens does not mutate original",
+			mutate:   func(c Config) Config { return c.WithMaxTokens(256) },
+			checkOld: func(t *testing.T, c Config) { assert.Equal(t, 512, c.MaxTokens) },
+			checkNew: func(t *testing.T, c Config) { assert.Equal(t, 256, c.MaxTokens) },
+		},
+		{
+			name:     "WithEmbedder does not mutate original",
+			mutate:   func(c Config) Config { return c.WithEmbedder("openai") },
+			checkOld: func(t *testing.T, c Config) { assert.Equal(t, "auto", c.Embedder) },
+			checkNew: func(t *testing.T, c Config) { assert.Equal(t, "openai", c.Embedder) },
+		},
+		{
+			name:     "WithEmbeddingModel does not mutate original",
+			mutate:   func(c Config) Config { return c.WithEmbeddingModel("text-embedding-3-small") },
+			checkOld: func(t *testing.T, c Config) { assert.Equal(t, "nomic-embed-text", c.EmbeddingModel) },
+			checkNew: func(t *testing.T, c Config) { assert.Equal(t, "text-embedding-3-small", c.EmbeddingModel) },
+		},
+		{
+			name:     "WithEmbeddingBatch does not mutate original",
+			mutate:   func(c Config) Config { return c.WithEmbeddingBatch(32) },
+			checkOld: func(t *testing.T, c Config) { assert.Equal(t, 64, c.EmbeddingBatch) },
+			checkNew: func(t *testing.T, c Config) { assert.Equal(t, 32, c.EmbeddingBatch) },
 		},
 	}
 
