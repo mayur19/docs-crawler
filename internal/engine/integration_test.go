@@ -185,6 +185,7 @@ func buildPipeline(
 		linkFollower,
 		dedup,
 		pools,
+		nil,
 	)
 }
 

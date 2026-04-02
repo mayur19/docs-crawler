@@ -99,6 +99,7 @@ func TestEngineRunBasic(t *testing.T) {
 		nil, // no link follower
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -129,6 +130,7 @@ func TestEngineRunMultipleURLs(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -158,6 +160,7 @@ func TestEngineDeduplicatesURLs(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -183,6 +186,7 @@ func TestEngineCancellation(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.DefaultPoolSizes(),
+		nil,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -211,6 +215,7 @@ func TestEngineStats(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -234,7 +239,7 @@ func TestDefaultPoolSizes(t *testing.T) {
 }
 
 func TestEngineRunInvalidSeedURL(t *testing.T) {
-	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes())
+	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes(), nil)
 	cfg := config.NewConfig("://invalid")
 	err := e.Run(context.Background(), cfg)
 	assert.Error(t, err)
@@ -254,6 +259,7 @@ func TestEngineTimeout(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.DefaultPoolSizes(),
+		nil,
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -333,6 +339,7 @@ func TestEngineRunIngest(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1, Chunk: 2, Embed: 2, Index: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -344,7 +351,7 @@ func TestEngineRunIngest(t *testing.T) {
 }
 
 func TestEngineRunIngestInvalidSeedURL(t *testing.T) {
-	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes())
+	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes(), nil)
 	cfg := config.NewConfig("://invalid")
 	err := e.RunIngest(context.Background(), cfg, &stubChunkerImpl{}, &stubEmbedderImpl{}, &stubIndexerImpl{})
 	assert.Error(t, err)
@@ -363,6 +370,7 @@ func TestEngineRunIngestCancellation(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.DefaultPoolSizes(),
+		nil,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
