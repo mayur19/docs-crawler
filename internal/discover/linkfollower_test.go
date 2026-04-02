@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/scope"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -306,6 +306,119 @@ func TestLinkFollower_Feed_SeedNotDuplicated(t *testing.T) {
 	// Only /new-page should appear; / was already emitted as the seed.
 	require.Len(t, got, 1)
 	assert.Equal(t, "/new-page", got[0].URL.Path)
+}
+
+func TestLinkFollower_Feed_ManyLinksNonBlocking(t *testing.T) {
+	// Regression test: Feed with more links than the channel buffer (64)
+	// must not deadlock. Before the fix, Feed held the mutex while sending
+	// on the channel, causing all concurrent Feed callers to block.
+	baseURL := "https://docs.example.com"
+	s := scope.NewScope(scope.ScopeConfig{Prefix: baseURL})
+	lf := NewLinkFollower(s)
+
+	seed, err := url.Parse(baseURL + "/")
+	require.NoError(t, err)
+
+	ch, err := lf.Discover(context.Background(), seed)
+	require.NoError(t, err)
+
+	// Drain seed.
+	<-ch
+
+	// Build a page with 100 unique links (exceeds 64-item channel buffer).
+	var links string
+	for i := range 100 {
+		links += fmt.Sprintf(`<a href="/page/%d">Page %d</a>`, i, i)
+	}
+	html := []byte("<html><body>" + links + "</body></html>")
+
+	parentURL, _ := url.Parse(baseURL + "/")
+	result := pipeline.FetchResult{
+		CrawlURL: pipeline.NewCrawlURL(parentURL, 0, pipeline.SourceSeed, "link-follower"),
+		Body:     html,
+	}
+
+	// Feed in one goroutine while concurrent Feed calls from others.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		lf.Feed(result)
+	}()
+
+	// Simulate concurrent fetch workers calling Feed simultaneously.
+	for i := range 5 {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			smallHTML := []byte(fmt.Sprintf(
+				`<html><body><a href="/extra/%d">Extra</a></body></html>`, idx,
+			))
+			r := pipeline.FetchResult{
+				CrawlURL: pipeline.NewCrawlURL(parentURL, 0, pipeline.SourceSeed, "link-follower"),
+				Body:     smallHTML,
+			}
+			lf.Feed(r)
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		lf.Close()
+	}()
+
+	var got []pipeline.CrawlURL
+	for cu := range ch {
+		got = append(got, cu)
+	}
+
+	// 100 from the main page + 5 extra pages = 105.
+	assert.Len(t, got, 105)
+}
+
+func TestLinkFollower_Close_DuringFeed(t *testing.T) {
+	// Regression test: Close must not panic even when Feed goroutines are
+	// actively enqueuing items.
+	baseURL := "https://docs.example.com"
+	s := scope.NewScope(scope.ScopeConfig{Prefix: baseURL})
+	lf := NewLinkFollower(s)
+
+	seed, err := url.Parse(baseURL + "/")
+	require.NoError(t, err)
+
+	ch, err := lf.Discover(context.Background(), seed)
+	require.NoError(t, err)
+
+	// Drain seed.
+	<-ch
+
+	// Build a page with many links.
+	var links string
+	for i := range 200 {
+		links += fmt.Sprintf(`<a href="/page/%d">Page %d</a>`, i, i)
+	}
+	html := []byte("<html><body>" + links + "</body></html>")
+	parentURL, _ := url.Parse(baseURL + "/")
+	result := pipeline.FetchResult{
+		CrawlURL: pipeline.NewCrawlURL(parentURL, 0, pipeline.SourceSeed, "link-follower"),
+		Body:     html,
+	}
+
+	// Feed in background.
+	go func() {
+		lf.Feed(result)
+		lf.Close()
+	}()
+
+	// Consumer keeps reading until channel closes — all 200 items arrive.
+	var got []pipeline.CrawlURL
+	assert.NotPanics(t, func() {
+		for cu := range ch {
+			got = append(got, cu)
+		}
+	})
+
+	assert.Len(t, got, 200)
 }
 
 func TestLinkFollower_Feed_IgnoresNonHTTP(t *testing.T) {

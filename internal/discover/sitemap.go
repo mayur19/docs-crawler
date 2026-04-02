@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/scope"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/scope"
 )
 
 // sitemapURLSet represents the standard <urlset> sitemap format.

@@ -11,8 +11,8 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/ratelimit"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/ratelimit"
 )
 
 const (

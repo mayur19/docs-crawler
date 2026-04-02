@@ -9,7 +9,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	readability "github.com/go-shiori/go-readability"
-	"github.com/napkin/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
 )
 
 // ReadabilityExtractor uses go-readability to strip non-content elements

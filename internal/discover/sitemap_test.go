@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/scope"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,11 +7,12 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/napkin/docs-crawler/internal/config"
-	"github.com/napkin/docs-crawler/internal/discover"
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/scope"
+	"github.com/mayur19/docs-crawler/internal/config"
+	"github.com/mayur19/docs-crawler/internal/discover"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/scope"
 )
 
 // PoolSizes configures goroutine counts per pipeline stage.
@@ -256,20 +257,22 @@ func (e *Engine) startDiscovery(
 }
 
 // waitForInFlightDrain blocks until the in-flight counter reaches zero
-// or the context is cancelled.
+// or the context is cancelled. It polls on a short ticker instead of
+// busy-spinning to avoid wasting CPU.
 func waitForInFlightDrain(ctx context.Context, inFlight *atomic.Int64) {
+	if inFlight.Load() <= 0 {
+		return
+	}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if inFlight.Load() <= 0 {
-			return
-		}
-		// Brief yield to avoid busy-waiting.
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
+			if inFlight.Load() <= 0 {
+				return
+			}
 		}
 	}
 }

@@ -18,13 +18,13 @@ Built in Go with a plugin architecture, parallel crawling, and automatic rate li
 ## Installation
 
 ```bash
-go install github.com/napkin/docs-crawler@latest
+go install github.com/mayur19/docs-crawler@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/napkin/docs-crawler.git
+git clone https://github.com/mayur19/docs-crawler.git
 cd docs-crawler
 make build
 ```

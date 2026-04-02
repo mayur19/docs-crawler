@@ -1,4 +1,4 @@
-module github.com/napkin/docs-crawler
+module github.com/mayur19/docs-crawler
 
 go 1.25.0
 

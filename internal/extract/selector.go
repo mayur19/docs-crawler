@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/napkin/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
 )
 
 // SelectorExtractor uses a CSS selector to identify the content area,

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/napkin/docs-crawler/cmd"
+import "github.com/mayur19/docs-crawler/cmd"
 
 func main() {
 	cmd.Execute()

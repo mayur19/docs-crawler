@@ -3,8 +3,8 @@ package fetch
 import (
 	"testing"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/ratelimit"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/ratelimit"
 	"github.com/stretchr/testify/assert"
 )
 

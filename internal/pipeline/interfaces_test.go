@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
 	"github.com/stretchr/testify/assert"
 )
 

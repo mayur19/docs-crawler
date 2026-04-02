@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/napkin/docs-crawler/internal/pipeline"
-	"github.com/napkin/docs-crawler/internal/scope"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/scope"
 )
 
 // Compile-time check: MarkdownWriter implements pipeline.Writer.

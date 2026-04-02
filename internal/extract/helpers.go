@@ -6,7 +6,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
-	"github.com/napkin/docs-crawler/internal/pipeline"
+	"github.com/mayur19/docs-crawler/internal/pipeline"
 )
 
 // extractTitle returns the page title, trying <title> first then falling back to first <h1>.
