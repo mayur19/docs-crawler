@@ -1,0 +1,5 @@
+docs-crawler
+cover.out
+docs-output/
+*.test
+.idea/
