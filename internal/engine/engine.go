@@ -21,11 +21,14 @@ type PoolSizes struct {
 	Fetch     int
 	Extract   int
 	Write     int
+	Chunk     int
+	Embed     int
+	Index     int
 }
 
 // DefaultPoolSizes returns sensible default pool sizes.
 func DefaultPoolSizes() PoolSizes {
-	return PoolSizes{Discovery: 2, Fetch: 10, Extract: 5, Write: 3}
+	return PoolSizes{Discovery: 2, Fetch: 10, Extract: 5, Write: 3, Chunk: 3, Embed: 2, Index: 1}
 }
 
 // Engine orchestrates the crawl pipeline: Discover → Fetch → Extract → Write.
@@ -388,6 +391,168 @@ func (e *Engine) extractResult(ctx context.Context, result pipeline.FetchResult)
 		return pipeline.Document{}, fmt.Errorf("no extractors configured")
 	}
 	return e.extractors[0].Extract(ctx, result)
+}
+
+// RunIngest executes the full ingest pipeline: Discover → Fetch → Extract → Chunk → Embed → Index.
+// It blocks until all work is done or the context is cancelled.
+func (e *Engine) RunIngest(
+	ctx context.Context,
+	cfg config.Config,
+	chunker pipeline.Chunker,
+	embedder pipeline.Embedder,
+	indexer pipeline.Indexer,
+) error {
+	seedURL, err := url.Parse(cfg.SeedURL)
+	if err != nil {
+		return fmt.Errorf("engine: invalid seed URL: %w", err)
+	}
+
+	fetchCh := make(chan pipeline.CrawlURL, e.pools.Fetch*2)
+	extractCh := make(chan pipeline.FetchResult, e.pools.Extract*2)
+	chunkCh := make(chan pipeline.Document, e.pools.Chunk*2)
+	embedCh := make(chan []pipeline.Chunk, e.pools.Embed*2)
+	indexCh := make(chan []pipeline.EmbeddedChunk, e.pools.Index*2)
+
+	var inFlight atomic.Int64
+
+	// Stage 1: Discovery.
+	discoverDone := e.startDiscovery(ctx, seedURL, fetchCh, &inFlight)
+
+	// Stage 2: Fetch.
+	fetchDone := e.startFetch(ctx, fetchCh, extractCh, &inFlight)
+
+	// Stage 3: Extract — push to chunkCh instead of writeCh.
+	var wg sync.WaitGroup
+	extractDone := e.startExtract(ctx, extractCh, chunkCh, &wg)
+
+	// Stage 4: Chunk.
+	chunkDone := e.startChunk(ctx, chunkCh, embedCh, chunker)
+
+	// Stage 5: Embed.
+	embedDone := e.startEmbed(ctx, embedCh, indexCh, embedder)
+
+	// Stage 6: Index.
+	indexDone := e.startIndex(ctx, indexCh, indexer)
+
+	// Cascade close.
+	go func() { discoverDone.Wait(); close(fetchCh) }()
+	go func() { fetchDone.Wait(); close(extractCh) }()
+	go func() { extractDone.Wait(); close(chunkCh) }()
+	go func() { chunkDone.Wait(); close(embedCh) }()
+	go func() { embedDone.Wait(); close(indexCh) }()
+
+	indexDone.Wait()
+	wg.Wait()
+
+	if err := indexer.Close(); err != nil {
+		e.logger.Error("failed to close indexer", "indexer", indexer.Name(), "error", err)
+	}
+
+	stats := e.Stats()
+	e.logger.Info("ingest complete",
+		"urls_seen", stats.URLsSeen,
+		"content_dups", stats.ContentDups,
+		"fetch_errors", stats.FetchErrors,
+	)
+
+	return nil
+}
+
+// startChunk launches chunk workers that read Documents from chunkCh and
+// push []Chunk batches to embedCh.
+func (e *Engine) startChunk(
+	ctx context.Context,
+	chunkCh <-chan pipeline.Document,
+	embedCh chan<- []pipeline.Chunk,
+	chunker pipeline.Chunker,
+) *sync.WaitGroup {
+	var done sync.WaitGroup
+
+	for range e.pools.Chunk {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			for doc := range chunkCh {
+				if ctx.Err() != nil {
+					return
+				}
+				chunks, err := chunker.Chunk(ctx, doc)
+				if err != nil {
+					e.logger.Warn("chunk failed", "url", doc.URL, "error", err)
+					continue
+				}
+				select {
+				case embedCh <- chunks:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	return &done
+}
+
+// startEmbed launches embed workers that read []Chunk batches from embedCh and
+// push []EmbeddedChunk batches to indexCh.
+func (e *Engine) startEmbed(
+	ctx context.Context,
+	embedCh <-chan []pipeline.Chunk,
+	indexCh chan<- []pipeline.EmbeddedChunk,
+	embedder pipeline.Embedder,
+) *sync.WaitGroup {
+	var done sync.WaitGroup
+
+	for range e.pools.Embed {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			for chunks := range embedCh {
+				if ctx.Err() != nil {
+					return
+				}
+				embedded, err := embedder.Embed(ctx, chunks)
+				if err != nil {
+					e.logger.Warn("embed failed", "chunks", len(chunks), "error", err)
+					continue
+				}
+				select {
+				case indexCh <- embedded:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	return &done
+}
+
+// startIndex launches index workers that read []EmbeddedChunk batches from
+// indexCh and call indexer.Index().
+func (e *Engine) startIndex(
+	ctx context.Context,
+	indexCh <-chan []pipeline.EmbeddedChunk,
+	indexer pipeline.Indexer,
+) *sync.WaitGroup {
+	var done sync.WaitGroup
+
+	for range e.pools.Index {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			for embedded := range indexCh {
+				if ctx.Err() != nil {
+					return
+				}
+				if err := indexer.Index(ctx, embedded); err != nil {
+					e.logger.Error("index failed", "chunks", len(embedded), "error", err)
+				}
+			}
+		}()
+	}
+
+	return &done
 }
 
 // startWrite launches write workers.
