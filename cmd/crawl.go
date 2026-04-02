@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -145,6 +146,27 @@ func executeCrawl(ctx context.Context, cfg config.Config) error {
 	// Build deduplicator.
 	dedup := config.NewDeduplicator()
 
+	// Fetch and parse robots.txt; failures are non-fatal (permissive by default).
+	seedParsed, err := url.Parse(cfg.SeedURL)
+	if err != nil {
+		return fmt.Errorf("parsing seed URL: %w", err)
+	}
+
+	var robotsChecker *scope.RobotsChecker
+	robotsData, robotsErr := scope.FetchRobots(ctx, seedParsed, httpClient)
+	if robotsErr != nil {
+		slog.Warn("could not fetch robots.txt, crawling without restrictions",
+			"error", robotsErr)
+	} else {
+		checker, parseErr := scope.NewRobotsChecker(robotsData, cfg.UserAgent)
+		if parseErr != nil {
+			slog.Warn("could not parse robots.txt, crawling without restrictions",
+				"error", parseErr)
+		} else {
+			robotsChecker = &checker
+		}
+	}
+
 	// Build and run engine.
 	pools := engine.PoolSizes{
 		Discovery: 2,
@@ -156,7 +178,7 @@ func executeCrawl(ctx context.Context, cfg config.Config) error {
 		pools.Extract = 1
 	}
 
-	e := engine.New(discoverers, fetchers, extractors, writers, linkFollower, dedup, pools)
+	e := engine.New(discoverers, fetchers, extractors, writers, linkFollower, dedup, pools, robotsChecker)
 
 	return e.Run(ctx, cfg)
 }

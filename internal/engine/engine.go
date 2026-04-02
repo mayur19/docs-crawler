@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"sync"
@@ -33,21 +34,22 @@ func DefaultPoolSizes() PoolSizes {
 
 // Engine orchestrates the crawl pipeline: Discover → Fetch → Extract → Write.
 type Engine struct {
-	discoverers  []pipeline.Discoverer
-	fetchers     []pipeline.Fetcher
-	extractors   []pipeline.Extractor
-	writers      []pipeline.Writer
-	linkFollower *discover.LinkFollower
-	dedup        *config.Deduplicator
-	pools        PoolSizes
-	logger       *slog.Logger
+	discoverers    []pipeline.Discoverer
+	fetchers       []pipeline.Fetcher
+	extractors     []pipeline.Extractor
+	writers        []pipeline.Writer
+	linkFollower   *discover.LinkFollower
+	dedup          *config.Deduplicator
+	pools          PoolSizes
+	logger         *slog.Logger
+	robotsChecker  *scope.RobotsChecker
 
 	// stats tracked during crawl
 	mu          sync.Mutex
 	fetchErrors int
 }
 
-// New creates a new Engine.
+// New creates a new Engine. robotsChecker may be nil to disable robots.txt enforcement.
 func New(
 	discoverers []pipeline.Discoverer,
 	fetchers []pipeline.Fetcher,
@@ -56,16 +58,18 @@ func New(
 	linkFollower *discover.LinkFollower,
 	dedup *config.Deduplicator,
 	pools PoolSizes,
+	robotsChecker *scope.RobotsChecker,
 ) *Engine {
 	return &Engine{
-		discoverers:  discoverers,
-		fetchers:     fetchers,
-		extractors:   extractors,
-		writers:      writers,
-		linkFollower: linkFollower,
-		dedup:        dedup,
-		pools:        pools,
-		logger:       slog.Default(),
+		discoverers:   discoverers,
+		fetchers:      fetchers,
+		extractors:    extractors,
+		writers:       writers,
+		linkFollower:  linkFollower,
+		dedup:         dedup,
+		pools:         pools,
+		logger:        slog.Default(),
+		robotsChecker: robotsChecker,
 	}
 }
 
@@ -133,6 +137,15 @@ func (e *Engine) Run(ctx context.Context, cfg config.Config) error {
 	// Wait for all writing to complete.
 	writeDone.Wait()
 	wg.Wait()
+
+	// Close any fetchers that implement io.Closer (e.g. browser fetcher).
+	for _, f := range e.fetchers {
+		if closer, ok := f.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				e.logger.Error("failed to close fetcher", "fetcher", f.Name(), "error", err)
+			}
+		}
+	}
 
 	// Close all writers (flush manifests, etc).
 	for _, w := range e.writers {
@@ -298,6 +311,11 @@ func (e *Engine) startFetch(
 					inFlight.Add(-1)
 					return
 				}
+				if e.robotsChecker != nil && !e.robotsChecker.IsAllowed(cu.URL) {
+					e.logger.Debug("robots.txt disallowed", "url", cu.String())
+					inFlight.Add(-1)
+					continue
+				}
 				result, err := e.fetchURL(ctx, cu)
 				if err != nil {
 					e.mu.Lock()
@@ -443,6 +461,15 @@ func (e *Engine) RunIngest(
 
 	indexDone.Wait()
 	wg.Wait()
+
+	// Close any fetchers that implement io.Closer (e.g. browser fetcher).
+	for _, f := range e.fetchers {
+		if closer, ok := f.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				e.logger.Error("failed to close fetcher", "fetcher", f.Name(), "error", err)
+			}
+		}
+	}
 
 	if err := indexer.Close(); err != nil {
 		e.logger.Error("failed to close indexer", "indexer", indexer.Name(), "error", err)
