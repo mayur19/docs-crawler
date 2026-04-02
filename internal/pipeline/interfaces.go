@@ -30,3 +30,24 @@ type Writer interface {
 	Write(ctx context.Context, doc Document) error
 	Close() error
 }
+
+// Chunker splits a Document into smaller Chunks for embedding.
+type Chunker interface {
+	Name() string
+	Chunk(ctx context.Context, doc Document) ([]Chunk, error)
+}
+
+// Embedder converts Chunks into vector embeddings.
+type Embedder interface {
+	Name() string
+	Embed(ctx context.Context, chunks []Chunk) ([]EmbeddedChunk, error)
+	Dimensions() int
+}
+
+// Indexer stores embedded chunks and supports search.
+type Indexer interface {
+	Name() string
+	Index(ctx context.Context, chunks []EmbeddedChunk) error
+	Search(ctx context.Context, query string, topK int) ([]SearchResult, error)
+	Close() error
+}
