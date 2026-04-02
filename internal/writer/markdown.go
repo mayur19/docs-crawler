@@ -80,12 +80,14 @@ func (w *MarkdownWriter) Close() error {
 	errs := w.errors
 	w.mu.Unlock()
 
+	completedAt := time.Now()
 	manifest := Manifest{
-		SeedURL:      w.seedURL,
-		StartedAt:    formatTime(w.startedAt),
-		CompletedAt:  formatTime(time.Now()),
-		PagesCrawled: pages,
-		Errors:       errs,
+		SeedURL:         w.seedURL,
+		StartedAt:       formatTime(w.startedAt),
+		CompletedAt:     formatTime(completedAt),
+		DurationSeconds: completedAt.Sub(w.startedAt).Seconds(),
+		PagesCrawled:    pages,
+		Errors:          errs,
 	}
 
 	data, err := marshalJSON(manifest)
