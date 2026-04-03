@@ -99,6 +99,7 @@ func TestEngineRunBasic(t *testing.T) {
 		nil, // no link follower
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -129,6 +130,7 @@ func TestEngineRunMultipleURLs(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -158,6 +160,7 @@ func TestEngineDeduplicatesURLs(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -183,6 +186,7 @@ func TestEngineCancellation(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.DefaultPoolSizes(),
+		nil,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -211,6 +215,7 @@ func TestEngineStats(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1},
+		nil,
 	)
 
 	cfg := config.NewConfig("https://docs.example.com")
@@ -228,10 +233,13 @@ func TestDefaultPoolSizes(t *testing.T) {
 	assert.Equal(t, 10, pools.Fetch)
 	assert.Equal(t, 5, pools.Extract)
 	assert.Equal(t, 3, pools.Write)
+	assert.Equal(t, 3, pools.Chunk)
+	assert.Equal(t, 2, pools.Embed)
+	assert.Equal(t, 1, pools.Index)
 }
 
 func TestEngineRunInvalidSeedURL(t *testing.T) {
-	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes())
+	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes(), nil)
 	cfg := config.NewConfig("://invalid")
 	err := e.Run(context.Background(), cfg)
 	assert.Error(t, err)
@@ -251,6 +259,7 @@ func TestEngineTimeout(t *testing.T) {
 		nil,
 		config.NewDeduplicator(),
 		engine.DefaultPoolSizes(),
+		nil,
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -258,5 +267,116 @@ func TestEngineTimeout(t *testing.T) {
 
 	cfg := config.NewConfig("https://docs.example.com")
 	err := e.Run(ctx, cfg)
+	assert.NoError(t, err)
+}
+
+// --- Ingest stubs ---
+
+type stubChunkerImpl struct{}
+
+func (s *stubChunkerImpl) Name() string { return "stub-chunker" }
+func (s *stubChunkerImpl) Chunk(_ context.Context, doc pipeline.Document) ([]pipeline.Chunk, error) {
+	return []pipeline.Chunk{
+		pipeline.NewChunk(doc.URL, doc.Title, nil, doc.Markdown, 0, 1),
+	}, nil
+}
+
+type stubEmbedderImpl struct{}
+
+func (s *stubEmbedderImpl) Name() string       { return "stub-embedder" }
+func (s *stubEmbedderImpl) Dimensions() int    { return 3 }
+func (s *stubEmbedderImpl) Embed(_ context.Context, chunks []pipeline.Chunk) ([]pipeline.EmbeddedChunk, error) {
+	result := make([]pipeline.EmbeddedChunk, len(chunks))
+	for i, c := range chunks {
+		result[i] = pipeline.NewEmbeddedChunk(c, []float32{0.1, 0.2, 0.3})
+	}
+	return result, nil
+}
+
+type stubIndexerImpl struct {
+	mu     sync.Mutex
+	chunks []pipeline.EmbeddedChunk
+}
+
+func (s *stubIndexerImpl) Name() string { return "stub-indexer" }
+func (s *stubIndexerImpl) Index(_ context.Context, chunks []pipeline.EmbeddedChunk) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chunks = append(s.chunks, chunks...)
+	return nil
+}
+func (s *stubIndexerImpl) Search(_ context.Context, _ string, _ int) ([]pipeline.SearchResult, error) {
+	return nil, nil
+}
+func (s *stubIndexerImpl) Close() error { return nil }
+
+func (s *stubIndexerImpl) ChunkCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.chunks)
+}
+
+// --- RunIngest tests ---
+
+func TestEngineRunIngest(t *testing.T) {
+	disc := &stubDiscoverer{
+		urls: []string{
+			"https://docs.example.com/page1",
+			"https://docs.example.com/page2",
+		},
+	}
+	fetcher := &stubFetcher{}
+	extractor := &stubExtractor{}
+	chunker := &stubChunkerImpl{}
+	embedder := &stubEmbedderImpl{}
+	indexer := &stubIndexerImpl{}
+
+	e := engine.New(
+		[]pipeline.Discoverer{disc},
+		[]pipeline.Fetcher{fetcher},
+		[]pipeline.Extractor{extractor},
+		nil, // no writers for ingest path
+		nil,
+		config.NewDeduplicator(),
+		engine.PoolSizes{Discovery: 1, Fetch: 2, Extract: 2, Write: 1, Chunk: 2, Embed: 2, Index: 1},
+		nil,
+	)
+
+	cfg := config.NewConfig("https://docs.example.com")
+	err := e.RunIngest(context.Background(), cfg, chunker, embedder, indexer)
+	require.NoError(t, err)
+
+	// seed + page1 + page2 = 3 docs, each produces 1 chunk → 3 embedded chunks
+	assert.Equal(t, 3, indexer.ChunkCount())
+}
+
+func TestEngineRunIngestInvalidSeedURL(t *testing.T) {
+	e := engine.New(nil, nil, nil, nil, nil, config.NewDeduplicator(), engine.DefaultPoolSizes(), nil)
+	cfg := config.NewConfig("://invalid")
+	err := e.RunIngest(context.Background(), cfg, &stubChunkerImpl{}, &stubEmbedderImpl{}, &stubIndexerImpl{})
+	assert.Error(t, err)
+}
+
+func TestEngineRunIngestCancellation(t *testing.T) {
+	disc := &stubDiscoverer{}
+	fetcher := &stubFetcher{}
+	extractor := &stubExtractor{}
+
+	e := engine.New(
+		[]pipeline.Discoverer{disc},
+		[]pipeline.Fetcher{fetcher},
+		[]pipeline.Extractor{extractor},
+		nil,
+		nil,
+		config.NewDeduplicator(),
+		engine.DefaultPoolSizes(),
+		nil,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	cfg := config.NewConfig("https://docs.example.com")
+	err := e.RunIngest(ctx, cfg, &stubChunkerImpl{}, &stubEmbedderImpl{}, &stubIndexerImpl{})
 	assert.NoError(t, err)
 }

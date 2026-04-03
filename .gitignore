@@ -4,4 +4,3 @@ docs-output/
 *.test
 .idea/
 .claude/
-docs/superpowers/

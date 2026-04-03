@@ -74,3 +74,64 @@ func TestWriterClose(t *testing.T) {
 	w := &mockWriter{}
 	assert.NoError(t, w.Close())
 }
+
+// mockChunker verifies the Chunker interface can be implemented.
+type mockChunker struct{}
+
+func (m *mockChunker) Name() string { return "mock-chunker" }
+func (m *mockChunker) Chunk(_ context.Context, _ pipeline.Document) ([]pipeline.Chunk, error) {
+	return []pipeline.Chunk{}, nil
+}
+
+// mockEmbedder verifies the Embedder interface can be implemented.
+type mockEmbedder struct{}
+
+func (m *mockEmbedder) Name() string { return "mock-embedder" }
+func (m *mockEmbedder) Embed(_ context.Context, _ []pipeline.Chunk) ([]pipeline.EmbeddedChunk, error) {
+	return []pipeline.EmbeddedChunk{}, nil
+}
+func (m *mockEmbedder) Dimensions() int { return 1536 }
+
+// mockIndexer verifies the Indexer interface can be implemented.
+type mockIndexer struct{}
+
+func (m *mockIndexer) Name() string { return "mock-indexer" }
+func (m *mockIndexer) Index(_ context.Context, _ []pipeline.EmbeddedChunk) error { return nil }
+func (m *mockIndexer) Search(_ context.Context, _ string, _ int) ([]pipeline.SearchResult, error) {
+	return []pipeline.SearchResult{}, nil
+}
+func (m *mockIndexer) Close() error { return nil }
+
+func TestChunkerEmbedderIndexerCompliance(t *testing.T) {
+	var c pipeline.Chunker = &mockChunker{}
+	var e pipeline.Embedder = &mockEmbedder{}
+	var i pipeline.Indexer = &mockIndexer{}
+
+	assert.Equal(t, "mock-chunker", c.Name())
+	assert.Equal(t, "mock-embedder", e.Name())
+	assert.Equal(t, "mock-indexer", i.Name())
+}
+
+func TestEmbedderDimensions(t *testing.T) {
+	e := &mockEmbedder{}
+	assert.Equal(t, 1536, e.Dimensions())
+}
+
+func TestIndexerClose(t *testing.T) {
+	i := &mockIndexer{}
+	assert.NoError(t, i.Close())
+}
+
+func TestChunkerReturnsSlice(t *testing.T) {
+	c := &mockChunker{}
+	chunks, err := c.Chunk(context.Background(), pipeline.Document{})
+	assert.NoError(t, err)
+	assert.NotNil(t, chunks)
+}
+
+func TestIndexerSearch(t *testing.T) {
+	i := &mockIndexer{}
+	results, err := i.Search(context.Background(), "test query", 5)
+	assert.NoError(t, err)
+	assert.NotNil(t, results)
+}

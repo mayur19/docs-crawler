@@ -10,20 +10,30 @@ import (
 
 var (
 	verbose bool
-	version = "0.1.0"
+	version = "1.0.0"
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "docs-crawler",
-	Short: "Crawl documentation websites for LLM/RAG ingestion",
-	Long: `docs-crawler intelligently crawls documentation websites and produces
-clean Markdown with structured metadata, optimized for LLM and RAG pipelines.
+	Short: "Crawl any documentation site into a searchable AI knowledge base",
+	Long: `docs-crawler is a full docs-to-AI pipeline. Crawl any documentation site,
+chunk and embed the content, search it semantically, and export it for LLM/RAG use.
 
-Features:
+Commands:
+  crawl    Crawl a documentation site and save clean Markdown
+  discover List URLs discoverable from a site without fetching content
+  ingest   Crawl, chunk, embed, and index a documentation site
+  search   Semantic search over an ingested knowledge base
+  export   Export indexed content to JSONL, Parquet, or CSV
+  init     Generate a starter config file
+
+Pipeline features:
+  - Single binary, zero runtime dependencies
+  - Offline-capable with local embeddings via Ollama or TF-IDF fallback
   - Intelligent rate limiting (auto-detects from response headers)
-  - Parallel crawling with configurable worker pools
+  - Parallel goroutine pools per stage connected by buffered channels
   - Plugin architecture (discoverers, fetchers, extractors, writers)
-  - Support for static HTML and JavaScript-rendered pages
+  - JavaScript-rendered pages via headless Chrome
   - Resume interrupted crawls`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		level := slog.LevelInfo

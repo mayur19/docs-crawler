@@ -73,6 +73,7 @@ func runDiscover(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Printf("\nTotal URLs found: %d\n", count)
 	slog.Info("discovery complete", "urls_found", count)
 	return nil
 }

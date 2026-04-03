@@ -19,11 +19,12 @@ type PageMeta struct {
 
 // Manifest holds summary information written at crawl completion.
 type Manifest struct {
-	SeedURL      string `json:"seed_url"`
-	StartedAt    string `json:"started_at"`
-	CompletedAt  string `json:"completed_at"`
-	PagesCrawled int    `json:"pages_crawled"`
-	Errors       int    `json:"errors"`
+	SeedURL         string  `json:"seed_url"`
+	StartedAt       string  `json:"started_at"`
+	CompletedAt     string  `json:"completed_at"`
+	DurationSeconds float64 `json:"duration_seconds"`
+	PagesCrawled    int     `json:"pages_crawled"`
+	Errors          int     `json:"errors"`
 }
 
 // marshalJSON encodes a value as indented JSON bytes.
