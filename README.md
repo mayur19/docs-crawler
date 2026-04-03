@@ -1,19 +1,19 @@
 # docs-crawler
 
-A fast, intelligent documentation crawler that produces clean Markdown for LLM/RAG pipelines.
+Crawl any documentation site into a searchable AI knowledge base. One binary. Zero dependencies.
 
-Built in Go with a plugin architecture, parallel crawling, and automatic rate limit detection.
+- Single static binary — no Node, no Python, no Docker required
+- Offline-capable — local embeddings via Ollama or built-in TF-IDF fallback
+- Instant semantic search over any crawled documentation
+- Full RAG export to JSONL, Parquet, or CSV
 
-## Features
+## Quick Start
 
-- **Intelligent rate limiting** — auto-detects limits from response headers (`X-RateLimit-*`, `Retry-After`), respects `robots.txt`, falls back to sensible defaults
-- **Parallel pipeline** — concurrent goroutine pools for discovery, fetching, extraction, and writing
-- **Plugin architecture** — extensible discoverers, fetchers, extractors, and writers
-- **JavaScript support** — headless Chrome via `rod` for JS-rendered documentation sites
-- **Clean output** — Markdown files with structured metadata JSON, optimized for RAG ingestion
-- **Scope control** — URL prefix, include/exclude glob patterns, max depth, same-domain filtering
-- **Resume support** — interrupted crawls can be resumed from saved state
-- **Content deduplication** — skips pages with identical content via SHA-256 hashing
+```bash
+go install github.com/mayur19/docs-crawler@latest
+docs-crawler ingest https://docs.example.com
+docs-crawler search "how to authenticate"
+```
 
 ## Installation
 
@@ -29,15 +29,26 @@ cd docs-crawler
 make build
 ```
 
-## Usage
+## Commands
 
-### Crawl a documentation site
+| Command | Description |
+|---------|-------------|
+| `crawl` | Crawl a documentation site and save clean Markdown |
+| `discover` | List URLs discoverable from a site without fetching content |
+| `ingest` | Crawl, chunk, embed, and index a documentation site |
+| `search` | Semantic search over an ingested knowledge base |
+| `export` | Export indexed content to JSONL, Parquet, or CSV |
+| `init` | Generate a starter config file |
+
+## Crawl
+
+Crawl a documentation site and save clean Markdown with metadata JSON:
 
 ```bash
 docs-crawler crawl https://docs.example.com
 ```
 
-### With options
+With options:
 
 ```bash
 docs-crawler crawl https://docs.example.com \
@@ -50,20 +61,6 @@ docs-crawler crawl https://docs.example.com \
   -v
 ```
 
-### Discover URLs without crawling
-
-```bash
-docs-crawler discover https://docs.example.com
-```
-
-### Enable JavaScript rendering
-
-```bash
-docs-crawler crawl https://spa-docs.example.com --use-browser
-```
-
-## CLI Reference
-
 ### `docs-crawler crawl [url]`
 
 | Flag | Default | Description |
@@ -75,20 +72,157 @@ docs-crawler crawl https://spa-docs.example.com --use-browser
 | `--include` | none | URL include glob patterns (repeatable) |
 | `--exclude` | none | URL exclude glob patterns (repeatable) |
 | `--use-browser` | `false` | Enable headless Chrome |
-| `--user-agent` | `docs-crawler/0.1.0` | Custom User-Agent |
+| `--user-agent` | `docs-crawler/1.0.0` | Custom User-Agent |
 | `--timeout` | `30s` | Per-request timeout |
 | `--resume` | `false` | Resume interrupted crawl |
 | `--verbose`, `-v` | `false` | Verbose logging |
 
+## Discover
+
+List discovered URLs without fetching content. Useful for previewing what will be crawled.
+
+```bash
+docs-crawler discover https://docs.example.com
+```
+
 ### `docs-crawler discover [url]`
 
-Lists discovered URLs without fetching content. Useful for previewing what will be crawled.
+Outputs one URL per line to stdout. Accepts the same scope flags as `crawl` (`--include`, `--exclude`, `--max-depth`).
+
+## Ingest
+
+Crawl, chunk, embed, and index a documentation site in one step:
+
+```bash
+docs-crawler ingest https://docs.example.com
+```
+
+With options:
+
+```bash
+docs-crawler ingest https://docs.example.com \
+  --chunk-strategy paragraph \
+  --max-tokens 512 \
+  --embedder ollama \
+  --embedding-model nomic-embed-text \
+  --embedding-batch 32 \
+  --config ./docs-crawler.yaml
+```
+
+### `docs-crawler ingest [url]`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--chunk-strategy` | `paragraph` | Chunking strategy: `paragraph`, `sentence`, `fixed` |
+| `--max-tokens` | `512` | Maximum tokens per chunk |
+| `--embedder` | `ollama` | Embedding provider: `ollama`, `tfidf`, `openai`, `cohere` |
+| `--embedding-model` | provider default | Model name passed to the embedding provider |
+| `--embedding-batch` | `32` | Number of chunks per embedding request |
+| `--config` | none | Path to config file |
+| `--output`, `-o` | `./docs-output` | Output directory for raw Markdown |
+| `--workers` | `10` | Concurrent fetch workers |
+| `--rate-limit` | auto-detect | Requests per second (0 = auto) |
+| `--verbose`, `-v` | `false` | Verbose logging |
+
+## Search
+
+Semantic search over an ingested knowledge base:
+
+```bash
+docs-crawler search "how to authenticate"
+```
+
+With options:
+
+```bash
+docs-crawler search "rate limiting" \
+  --top 10 \
+  --source ./docs-output \
+  --format json
+```
+
+### `docs-crawler search [query]`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--top` | `5` | Number of results to return |
+| `--source` | `./docs-output` | Directory containing the indexed knowledge base |
+| `--format` | `text` | Output format: `text`, `json` |
+
+## Export
+
+Export indexed content for use in external RAG pipelines:
+
+```bash
+docs-crawler export --format jsonl -o ./export.jsonl
+```
+
+With options:
+
+```bash
+docs-crawler export \
+  --format parquet \
+  --include-vectors \
+  --source ./docs-output \
+  -o ./export.parquet
+```
+
+### `docs-crawler export`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `jsonl` | Export format: `jsonl`, `parquet`, `csv` |
+| `--include-vectors` | `false` | Include embedding vectors in the export |
+| `-o` | `./export.jsonl` | Output file path |
+| `--source` | `./docs-output` | Directory containing the indexed knowledge base |
+
+## Config File
+
+Generate a starter config:
+
+```bash
+docs-crawler init
+```
+
+This writes `docs-crawler.yaml` to the current directory:
+
+```yaml
+crawl:
+  workers: 10
+  max_depth: 0
+  rate_limit: 0
+  use_browser: false
+  timeout: 30s
+
+ingest:
+  chunk_strategy: paragraph
+  max_tokens: 512
+  embedder: ollama
+  embedding_model: nomic-embed-text
+  embedding_batch: 32
+
+output: ./docs-output
+```
+
+Pass the config file to any command with `--config ./docs-crawler.yaml`.
+
+## Embedding Providers
+
+| Provider | Requires | Notes |
+|----------|----------|-------|
+| `ollama` | Ollama running locally | Default. Fully offline. |
+| `tfidf` | Nothing | Pure Go fallback. No external service needed. |
+| `openai` | `OPENAI_API_KEY` env var | Uses `text-embedding-3-small` by default. |
+| `cohere` | `COHERE_API_KEY` env var | Uses `embed-english-v3.0` by default. |
 
 ## Output Format
 
 ```
-output/
+docs-output/
 ├── manifest.json              # Crawl metadata and stats
+├── index/
+│   ├── chunks.db              # SQLite index of chunks and vectors
+│   └── vocab.json             # TF-IDF vocabulary (tfidf embedder only)
 ├── pages/
 │   ├── getting-started.md
 │   ├── getting-started.meta.json
@@ -116,10 +250,22 @@ Each `.meta.json` contains:
 
 ## Architecture
 
+### Crawl pipeline
+
 ```
-Discoverer → Fetcher → Extractor → Writer
-(sitemap,    (HTTP,     (readability, (markdown +
- links)      browser)   selector)     meta JSON)
+Discoverer -> Fetcher -> Extractor -> Writer
+(sitemap,     (HTTP,      (readability, (markdown +
+ links)        browser)    selector)     meta JSON)
+```
+
+### Ingest pipeline
+
+```
+Crawl pipeline -> Chunker -> Embedder -> Indexer
+                  (paragraph, (ollama,    (SQLite
+                   sentence,   tfidf,      vector
+                   fixed)      openai,     store)
+                               cohere)
 ```
 
 Each stage runs in its own goroutine pool, connected by buffered channels with backpressure.
