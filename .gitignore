@@ -4,3 +4,4 @@ docs-output/
 *.test
 .idea/
 .claude/
+.DS_Store
